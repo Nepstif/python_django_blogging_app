@@ -1,10 +1,11 @@
 from django.core.mail import send_mail
 from django.core.paginator import Paginator, EmptyPage, PageNotAnInteger
 from django.shortcuts import render, get_object_or_404 as get_object
+from django.views.decorators.http import require_POST
 from django.views.generic import ListView
 
-from blog.forms import EmailPostForm
-from blog.models import Post
+from blog.forms import EmailPostForm, CommentForm
+from blog.models import Post, Comment
 
 
 def post_list(request):
@@ -33,9 +34,16 @@ def post_detail(request, year, month, day, post):
                       publish__year=year,
                       publish__month=month,
                       publish__day=day)
+    #Список активных комментариев к этому посту
+    comments = post.comments.filter(active=True)
+    # Форма для комментирования пользователями
+    form = CommentForm()
 
     return render(request, "blog/post/detail.html",
-                  {"post": post})
+                  {"post": post,
+                   "comments": comments,
+                   "form": form})
+
 
 class PostLitView(ListView):
     """
@@ -76,4 +84,26 @@ def post_share(request, post_id):
         form = EmailPostForm()
     return render(request, "blog/post/share.html", {"post": post,
                                                     "form": form,
-                                                    "sent":send})
+                                                    "sent": send})
+
+
+@require_POST
+def post_comment(request, post_id):
+    post = get_object(Post,
+                      id=post_id,
+                      status=Post.Status.PUBLISHED)
+
+    comment = None
+    # Комментарий был отправлен
+    form = CommentForm(data=request.POST)
+    if form.is_valid():
+        # Создать объект класса Comment, не сохраняя его в базе данны
+        comment = form.save(commit=False)
+        # Назначить пост комментарию
+        comment.post = post
+        # Сохранить комментарий в базе данных
+        comment.save()
+    return render(request, "blog/post/comment.html",
+                  {"post": post,
+                   "form": form,
+                   "comment": comment})
